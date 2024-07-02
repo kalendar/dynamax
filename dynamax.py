@@ -8,7 +8,6 @@ RADIO_HOST = '192.168.0.30'
 RADIO_PORT = 4992
 AMP_HOST = '192.168.0.11'
 AMP_PORT = 4626
-TARGET_POWER = 350
 MIN_POWER = 340
 MAX_POWER = 350
 
@@ -103,9 +102,9 @@ class Dynamax:
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dynamax Control")
+        self.root.title("Dynamax")
 
-        self.info_label = tk.Label(root, text="Dynamically maximizing FT8 power!")
+        self.info_label = tk.Label(root, text="Dynamically maximizing FT4/FT8 power!")
         self.info_label.pack(pady=10, padx=20)
 
         self.radio_pwr = tk.StringVar(value="Radio: 0 w")
