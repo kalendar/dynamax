@@ -6,7 +6,7 @@ from tkinter import ttk
 
 RADIO_HOST = '192.168.0.30'
 RADIO_PORT = 4992
-AMP_HOST = '192.168.0.11'
+AMP_HOST = '192.168.0.19'
 AMP_PORT = 4626
 MIN_POWER = 340
 MAX_POWER = 350
@@ -99,34 +99,58 @@ class Dynamax:
         if self.amp_writer:
             self.amp_writer.close()
 
+
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dynamax")
+        self.root.title("Dynamax Control")
 
         self.info_label = tk.Label(root, text="Dynamically maximizing FT4/FT8 power!")
-        self.info_label.pack(pady=10, padx=20)
+        self.info_label.grid(row=0, column=0, columnspan=2, pady=10, padx=20)
+
+        # Add sliders for MIN_POWER and MAX_POWER with resolution of 10
+        self.min_power_label = tk.Label(root, text="Min Power")
+        self.min_power_label.grid(row=1, column=0, pady=5)
+        self.min_power_slider = tk.Scale(root, from_=0, to=500, orient='horizontal', command=self.update_min_power, resolution=10)
+        self.min_power_slider.set(MIN_POWER)
+        self.min_power_slider.grid(row=2, column=0, pady=5)
+
+        self.max_power_label = tk.Label(root, text="Max Power")
+        self.max_power_label.grid(row=1, column=1, pady=5)
+        self.max_power_slider = tk.Scale(root, from_=0, to=500, orient='horizontal', command=self.update_max_power, resolution=10)
+        self.max_power_slider.set(MAX_POWER)
+        self.max_power_slider.grid(row=2, column=1, pady=5)
 
         self.radio_pwr = tk.StringVar(value="Radio: 0 w")
         self.amp_pwr = tk.StringVar(value="Amp: 0 w")
 
         self.radio_pwr_label = tk.Label(root, textvariable=self.radio_pwr)
-        self.radio_pwr_label.pack(pady=5)
+        self.radio_pwr_label.grid(row=3, column=0, columnspan=2, pady=5)
 
         self.radio_pwr_progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate", maximum=100)
-        self.radio_pwr_progress.pack(pady=5)
+        self.radio_pwr_progress.grid(row=4, column=0, columnspan=2, pady=5)
 
         self.amp_pwr_label = tk.Label(root, textvariable=self.amp_pwr)
-        self.amp_pwr_label.pack(pady=5)
+        self.amp_pwr_label.grid(row=5, column=0, columnspan=2, pady=5)
 
         self.amp_pwr_progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate", maximum=400)
-        self.amp_pwr_progress.pack(pady=5)
+        self.amp_pwr_progress.grid(row=6, column=0, columnspan=2, pady=5)
 
         self.loop = asyncio.get_event_loop()
         self.dynamax = Dynamax(self.update_ui)
         self.start()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)  # Handle window close event
+
+    def update_min_power(self, value):
+        global MIN_POWER
+        MIN_POWER = int(value)
+        print(f"MIN_POWER set to {MIN_POWER}")
+
+    def update_max_power(self, value):
+        global MAX_POWER
+        MAX_POWER = int(value)
+        print(f"MAX_POWER set to {MAX_POWER}")
 
     def update_ui(self, radio_pwr, amp_pwr):
         if radio_pwr is not None:
@@ -148,5 +172,8 @@ class App:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    # Apply a theme
+    style = ttk.Style()
+    style.theme_use('alt')
     app = App(root)
     root.mainloop()
