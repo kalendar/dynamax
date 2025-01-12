@@ -8,24 +8,31 @@ RADIO_HOST = '192.168.0.30'
 RADIO_PORT = 4992
 AMP_HOST = '192.168.0.19'
 AMP_PORT = 4626
-MIN_POWER = 340
 MAX_POWER = 350
+MIN_POWER = MAX_POWER - 20
 
 class Dynamax:
-    def __init__(self, update_ui):
+    def __init__(self, update_ui, update_status):
         self.radio_seq = 0
-        self.radio_power = None  # Will be read from the status broadcast
-        self.amp_power = None  # Will be read from the status broadcast
-        self.radio_state = None  # Will track the state of the radio
+        self.radio_power = None
+        self.amp_power = None
+        self.radio_state = None
         self.update_ui = update_ui
+        self.update_status = update_status
         self.running = False
 
     async def connect_radio(self):
-        self.radio_reader, self.radio_writer = await asyncio.open_connection(RADIO_HOST, RADIO_PORT)
-        self.send_radio_command('sub tx all')
+        try:
+            self.radio_reader, self.radio_writer = await asyncio.open_connection(RADIO_HOST, RADIO_PORT)
+            self.send_radio_command('sub tx all')
+        except Exception as e:
+            self.update_status(f"Error connecting to radio: {e}")
 
     async def connect_amp(self):
-        self.amp_reader, self.amp_writer = await asyncio.open_connection(AMP_HOST, AMP_PORT)
+        try:
+            self.amp_reader, self.amp_writer = await asyncio.open_connection(AMP_HOST, AMP_PORT)
+        except Exception as e:
+            self.update_status(f"Error connecting to amplifier: {e}")
 
     def send_radio_command(self, command):
         self.radio_seq += 1
@@ -47,50 +54,78 @@ class Dynamax:
     async def handle_radio_messages(self):
         previous_state = None
         while self.running:
-            line = await self.radio_reader.readline()
-            if line:
-                line = line.decode().strip()
-                if 'rfpower' in line:
-                    match = re.search(r'rfpower=(\d+)', line)
-                    if match:
-                        self.radio_power = int(match.group(1))
-                        print(f'Initial radio power set to {self.radio_power}')
-                        self.update_ui(self.radio_power, self.amp_power)
-                elif 'state=' in line:
-                    match = re.search(r'state=(\w+)', line)
-                    if match:
-                        self.radio_state = match.group(1)
-                        print(f'Radio state: {self.radio_state}')
-                        # When the radio stops transmitting, the amp power falls off and the radio power gets
-                        # bumped up before the loop ends. Adjust down a few watts so the next TX doesn't start too hot.
-                        if previous_state == "TRANSMITTING" and self.radio_state != "TRANSMITTING":
-                            self.radio_power -= 4
-                            self.send_radio_command(f'transmit set rfpower {self.radio_power}')
+            try:
+                line = await self.radio_reader.readline()
+                if line:
+                    line = line.decode().strip()
+                    print(line)
+
+                    if 'freq=' in line:
+                        match = re.search(r'freq=(\d+)', line)
+                        if match:
+                            freq = match.group(1)
+                            global MAX_POWER
+                            if freq.startswith('50'):
+                                MAX_POWER = 500
+                                MIN_POWER = MAX_POWER - 20
+                                self.update_status(f"6m detected. Setting maximum power to {MAX_POWER}w.")
+                            else:
+                                MAX_POWER = 350
+                                MIN_POWER = MAX_POWER - 20
+                                self.update_status(f"HF detected. Setting maximum power to {MAX_POWER}w.")
+
+                    if 'rfpower' in line:
+                        match = re.search(r'rfpower=(\d+)', line)
+                        if match:
+                            self.radio_power = int(match.group(1))
+                            print(f'Initial radio power set to {self.radio_power}')
                             self.update_ui(self.radio_power, self.amp_power)
-                        previous_state = self.radio_state
+                    elif 'state=' in line:
+                        match = re.search(r'state=(\w+)', line)
+                        if match:
+                            self.radio_state = match.group(1)
+                            print(f'Radio state: {self.radio_state}')
+                            if previous_state == "TRANSMITTING" and self.radio_state != "TRANSMITTING":
+                                self.radio_power = max(0, self.radio_power - 4)
+                                self.send_radio_command(f'transmit set rfpower {self.radio_power}')
+                                self.update_ui(self.radio_power, self.amp_power)
+                            previous_state = self.radio_state
+            except Exception as e:
+                self.update_status(f"Error in radio message handler: {e}")
 
     async def handle_amp_messages(self):
         while self.running:
-            line = await self.amp_reader.readline()
-            if line:
-                line = line.decode().strip()
-                if 'amp::meter::Power::' in line:
-                    match = re.search(r'amp::meter::Power::(\d+)', line)
-                    if match:
-                        self.amp_power = int(match.group(1))
-                        print(f'Initial amp power set to {self.amp_power}')
-                        self.update_ui(self.radio_power, self.amp_power)
-                        if self.radio_state == "TRANSMITTING" and (self.amp_power < MIN_POWER or self.amp_power > MAX_POWER):
-                            self.adjust_radio_power()
+            try:
+                line = await self.amp_reader.readline()
+                if line:
+                    line = line.decode().strip()
+                    if 'amp::meter::Power::' in line:
+                        match = re.search(r'amp::meter::Power::(\d+)', line)
+                        if match:
+                            self.amp_power = int(match.group(1))
+                            print(f'Initial amp power set to {self.amp_power}')
+                            self.update_ui(self.radio_power, self.amp_power)
+                            if self.radio_state == "TRANSMITTING" and (self.amp_power < MIN_POWER or self.amp_power > MAX_POWER):
+                                self.adjust_radio_power()
+            except Exception as e:
+                self.update_status(f"Error in amplifier message handler: {e}")
 
     async def run(self):
         self.running = True
-        await self.connect_radio()
-        await self.connect_amp()
-        await asyncio.gather(
-            self.handle_radio_messages(),
-            self.handle_amp_messages(),
-        )
+        try:
+            await self.connect_radio()
+            await self.connect_amp()
+            tasks = [
+                asyncio.create_task(self.handle_radio_messages()),
+                asyncio.create_task(self.handle_amp_messages())
+            ]
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.update_status(f"Unexpected error: {e}")
+        finally:
+            self.running = False
 
     def stop(self):
         self.running = False
@@ -99,58 +134,37 @@ class Dynamax:
         if self.amp_writer:
             self.amp_writer.close()
 
-
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Dynamax Control")
 
-        self.info_label = tk.Label(root, text="Dynamically maximizing FT4/FT8 power!")
-        self.info_label.grid(row=0, column=0, columnspan=2, pady=10, padx=20)
-
-        # Add sliders for MIN_POWER and MAX_POWER with resolution of 10
-        self.min_power_label = tk.Label(root, text="Min Power")
-        self.min_power_label.grid(row=1, column=0, pady=5)
-        self.min_power_slider = tk.Scale(root, from_=0, to=500, orient='horizontal', command=self.update_min_power, resolution=10)
-        self.min_power_slider.set(MIN_POWER)
-        self.min_power_slider.grid(row=2, column=0, pady=5)
-
-        self.max_power_label = tk.Label(root, text="Max Power")
-        self.max_power_label.grid(row=1, column=1, pady=5)
-        self.max_power_slider = tk.Scale(root, from_=0, to=500, orient='horizontal', command=self.update_max_power, resolution=10)
-        self.max_power_slider.set(MAX_POWER)
-        self.max_power_slider.grid(row=2, column=1, pady=5)
+        self.status_label = tk.Label(root, text=f"HF detected. Setting maximum power to {MAX_POWER}w.", font=('Helvetica', 12))
+        self.status_label.grid(row=0, column=0, columnspan=2, pady=10, padx=20)
 
         self.radio_pwr = tk.StringVar(value="Radio: 0 w")
         self.amp_pwr = tk.StringVar(value="Amp: 0 w")
 
-        self.radio_pwr_label = tk.Label(root, textvariable=self.radio_pwr)
-        self.radio_pwr_label.grid(row=3, column=0, columnspan=2, pady=5)
+        self.radio_pwr_label = tk.Label(root, textvariable=self.radio_pwr, font=('Helvetica', 12))
+        self.radio_pwr_label.grid(row=1, column=0, columnspan=2, pady=5)
 
         self.radio_pwr_progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate", maximum=100)
-        self.radio_pwr_progress.grid(row=4, column=0, columnspan=2, pady=5)
+        self.radio_pwr_progress.grid(row=2, column=0, columnspan=2, pady=5)
 
-        self.amp_pwr_label = tk.Label(root, textvariable=self.amp_pwr)
-        self.amp_pwr_label.grid(row=5, column=0, columnspan=2, pady=5)
+        self.amp_pwr_label = tk.Label(root, textvariable=self.amp_pwr, font=('Helvetica', 12))
+        self.amp_pwr_label.grid(row=3, column=0, columnspan=2, pady=5)
 
         self.amp_pwr_progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate", maximum=400)
-        self.amp_pwr_progress.grid(row=6, column=0, columnspan=2, pady=5)
+        self.amp_pwr_progress.grid(row=4, column=0, columnspan=2, pady=35)
 
         self.loop = asyncio.get_event_loop()
-        self.dynamax = Dynamax(self.update_ui)
+        self.dynamax = Dynamax(self.update_ui, self.update_status)
         self.start()
 
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)  # Handle window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    def update_min_power(self, value):
-        global MIN_POWER
-        MIN_POWER = int(value)
-        print(f"MIN_POWER set to {MIN_POWER}")
-
-    def update_max_power(self, value):
-        global MAX_POWER
-        MAX_POWER = int(value)
-        print(f"MAX_POWER set to {MAX_POWER}")
+    def update_status(self, status_text):
+        self.status_label.config(text=status_text)
 
     def update_ui(self, radio_pwr, amp_pwr):
         if radio_pwr is not None:
@@ -161,10 +175,11 @@ class App:
             self.amp_pwr_progress['value'] = amp_pwr
 
     def start(self):
-        threading.Thread(target=self.loop.run_until_complete, args=(self.dynamax.run(),)).start()
+        threading.Thread(target=lambda: self.loop.run_until_complete(self.dynamax.run()), daemon=True).start()
 
     def stop(self):
-        self.dynamax.stop()
+        self.loop.call_soon_threadsafe(self.dynamax.stop)
+        self.loop.stop()
 
     def on_closing(self):
         self.stop()
@@ -172,7 +187,6 @@ class App:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # Apply a theme
     style = ttk.Style()
     style.theme_use('alt')
     app = App(root)
