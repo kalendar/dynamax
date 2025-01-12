@@ -6,11 +6,11 @@ Automatically keep the output of a KPA500 within a certain range when using the 
 
 ## The Problem Dynamax Solves
 
-I have a Flex 6400, a KPA500, and a EFHW-8010-2K-Plus antenna. The antenna cannot take more than 350w in digital modes. For that hard to reach DX on FT8 or FT4, I like to run the maximum power possible. However, I have noticed that the actual power out of the amp fluctuates somewhat, and I don't want to have to make constant one or two watt adjustments to the power coming out of the radio to stay near the max without exceeding it. 
+I have a Flex 6400, a KPA500, a EFHW-8010-2K-Plus antenna for 10m-80m, and a dipole for 6m. The endfed antenna cannot take more than 350w in digital modes. For that hard to reach DX on FT8 or FT4, I like to run the maximum power possible. However, I have noticed that the actual power out of the amp fluctuates somewhat across bands, as well as sometimes on the same band, and I don't want to have to make constant one or two watt adjustments to the power coming out of the radio to stay near the max without exceeding it.  
 
 ## How It Solves the Problem
 
-Dynamax keeps the power coming out of the amp within a certain range. (The default is between 340 and 350 watts.) Dynamax monitors status broadcasts from the Flex and KPA500, and automtically adjusts the radio's power output in real-time based on the power out of the amp.
+Dynamax keeps the power coming out of the amp within a certain range. (The default is between 330 and 350 watts.) Dynamax monitors messages the Flex and KPA500 broadcast over the network, and automtically adjusts the radio's power output in real-time based on the power out of the amp.
 
 ## What You'll Need
 
