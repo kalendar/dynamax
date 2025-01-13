@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 import threading
 import tkinter as tk
 from tkinter import ttk
@@ -46,6 +47,7 @@ class Dynamax:
             if self.amp_power < MIN_POWER:
                 self.radio_power += 1
                 self.send_radio_command(f'transmit set rfpower {self.radio_power}')
+                time.sleep(0.1)
             elif self.amp_power > MAX_POWER:
                 self.radio_power -= 1
                 self.send_radio_command(f'transmit set rfpower {self.radio_power}')
@@ -86,7 +88,7 @@ class Dynamax:
                             self.radio_state = match.group(1)
                             print(f'Radio state: {self.radio_state}')
                             if previous_state == "TRANSMITTING" and self.radio_state != "TRANSMITTING":
-                                self.radio_power = max(0, self.radio_power - 4)
+                                self.radio_power = max(10, self.radio_power - 4)
                                 self.send_radio_command(f'transmit set rfpower {self.radio_power}')
                                 self.update_ui(self.radio_power, self.amp_power)
                             previous_state = self.radio_state
@@ -139,6 +141,9 @@ class App:
         self.root = root
         self.root.title("Dynamax Control")
 
+        self.root.attributes("-topmost", True)
+        self.root.focus_force()
+
         self.status_label = tk.Label(root, text=f"HF detected. Setting maximum power to {MAX_POWER}w.", font=('Helvetica', 12))
         self.status_label.grid(row=0, column=0, columnspan=2, pady=10, padx=20)
 
@@ -155,7 +160,12 @@ class App:
         self.amp_pwr_label.grid(row=3, column=0, columnspan=2, pady=5)
 
         self.amp_pwr_progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate", maximum=400)
-        self.amp_pwr_progress.grid(row=4, column=0, columnspan=2, pady=35)
+        self.amp_pwr_progress.grid(row=4, column=0, columnspan=2, pady=5)  # Top padding only
+
+        # Add a spacer
+        spacer = tk.Frame(root, height=30)  # Height of 30 for bottom padding
+        spacer.grid(row=5, column=0, columnspan=2)
+
 
         self.loop = asyncio.get_event_loop()
         self.dynamax = Dynamax(self.update_ui, self.update_status)
